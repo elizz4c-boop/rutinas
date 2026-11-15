@@ -30,6 +30,11 @@ rutinas/
 4. Súbela a GitHub. Su link queda así:
    `https://TU-USUARIO.github.io/rutinas/c/maria-p3x9rt/`
 
+### Opcional en `config.js`
+
+- `comidas`: lista de comidas para marcar. Si no la pones, usa las 5 del plan (desayuno, colación, comida, snack antes del gym, cena).
+- `motivos`: motivos del botón "Hoy no puedo entrenar". Ejemplo: `[['trabajo','💼 Trabajo'], ['otro','🤷 Otro']]`.
+
 ## Reglas de privacidad
 
 En `config.js` **solo** van:

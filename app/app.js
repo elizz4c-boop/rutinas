@@ -26,7 +26,11 @@
   const today = new Date(), todayMon = monday(today), todayIdx = (today.getDay() + 6) % 7;
   if (!mem.start) { mem.start = iso(today); save(); }
 
-  let wk = todayMon, sel = todayIdx, tab = 'hoy', mode = mem.mode || 'gym';
+  let wk = todayMon, sel = todayIdx, tab = 'hoy', mode = mem.mode || 'gym', skipOpen = false;
+  const COMIDAS = C.comidas || ['🌅 Desayuno', '🍎 Colación', '🍲 Comida', '🥪 Snack antes del gym', '🌙 Cena'];
+  const MOTIVOS = C.motivos || [['trabajo', '💼 Trabajo'], ['escuela', '📚 Escuela'], ['cansancio', '😴 Mucho cansancio'], ['dolor', '🩹 Me duele algo'], ['otro', '🤷 Otro']];
+  const motivo = v => (MOTIVOS.find(m => m[0] === v) || [v, v])[1];
+  const mealsCount = r => r && r.f ? Object.keys(r.f).filter(k => r.f[k] && +k < COMIDAS.length).length : 0;
 
   // ---------- datos ----------
   function rec(w, i) { const k = iso(w); mem.w[k] = mem.w[k] || {}; mem.w[k][i] = mem.w[k][i] || { c: {}, w: 0, k: '', p: {} }; return mem.w[k][i]; }
@@ -46,18 +50,19 @@
   function status(w, i) {
     const r = peek(w, i), n = doneCount(r, i), total = C.dias[i].items.length, d = iso(addDays(w, i));
     if (n >= total) return '✅';
+    if (r && r.skip) return '⏸️';
     if (n > 0) return '🟡';
     if (d < mem.start) return '·';
     return d < iso(today) ? '❌' : '⬜';
   }
   function weekStats(w) {
-    let full = 0, water = 0, hyd = 0;
+    let full = 0, water = 0, hyd = 0, meals = 0, skips = 0;
     for (let i = 0; i < 7; i++) {
       const r = peek(w, i);
       if (status(w, i) === '✅') full++;
-      if (r) { water += r.w; if (r.w >= AGUA.min) hyd++; }
+      if (r) { water += r.w; if (r.w >= AGUA.min) hyd++; if (mealsCount(r) >= COMIDAS.length) meals++; if (r.skip) skips++; }
     }
-    return { full, water, hyd };
+    return { full, water, hyd, meals, skips };
   }
   // historial de pesos por ejercicio: [{fecha, peso}]
   function weights() {
@@ -82,10 +87,11 @@
     return n;
   }
   function badges() {
-    let fullDays = 0, anyDay = false, weekOk = false, hydOk = false;
+    let fullDays = 0, anyDay = false, weekOk = false, hydOk = false, mealOk = false, warned = false, hydDays = 0;
     Object.keys(mem.w).forEach(k => {
       const w = fromIso(k), s = weekStats(w);
-      fullDays += s.full; if (s.full >= META) weekOk = true; if (s.hyd >= 7) hydOk = true;
+      fullDays += s.full; hydDays += s.hyd; if (s.full >= META) weekOk = true; if (s.hyd >= 7) hydOk = true;
+      if (s.meals >= 7) mealOk = true; if (s.skips > 0) warned = true;
       for (let i = 0; i < 7; i++) if (doneCount(peek(w, i), i) > 0) anyDay = true;
     });
     const up = Object.values(weights()).some(a => a.length > 1 && a[a.length - 1].v > a[0].v);
@@ -99,6 +105,9 @@
       ['🏆', '4 semanas seguidas', st >= 4],
       ['⭐', '25 días completos', fullDays >= 25],
       ['📲', 'Mandé mi resumen', !!mem.sent],
+      ['🍎', '7 días comiendo bien', mealOk],
+      ['🗣️', 'Avisé cuando no pude', warned],
+      ['🌊', '30 días con agua', hydDays >= 30],
       ['👑', '12 semanas seguidas', st >= 12]
     ];
   }
@@ -127,11 +136,22 @@
     const done = doneCount(r, sel), total = D.items.length;
     let h = weekNav() + '<div class="cal">';
     for (let i = 0; i < 7; i++) h += `<button data-day="${i}" class="${i === sel ? 'sel' : ''}"><span class="d">${DN[i]}</span><span class="n">${addDays(wk, i).getDate()}</span><span class="s">${status(wk, i)}</span></button>`;
-    h += `</div><div class="legend"><span>✅ completo</span><span>🟡 a medias</span><span>❌ no lo hice</span><span>⬜ pendiente</span></div>
+    h += `</div><div class="legend"><span>✅ completo</span><span>🟡 a medias</span><span>⏸️ avisé que no pude</span><span>❌ no lo hice</span><span>⬜ pendiente</span></div>
       <div class="seg"><button data-mode="gym" class="${mode === 'gym' ? 'on' : ''}">🏋️ En el gym</button><button data-mode="casa" class="${mode === 'casa' ? 'on' : ''}">🏠 Sin máquinas</button></div>
       <div class="dayhead" style="background:${D.color}"><h2>${D.titulo}</h2>
       <p>${DNL[sel]} ${fecha(addDays(wk, sel))} · ${done} de ${total} hechos ${done === total ? '🎉' : ''}</p>
       ${D.nota ? `<p>${D.nota}</p>` : ''}<div class="bar"><i style="width:${Math.round(done / total * 100)}%"></i></div></div>`;
+    if (r.skip) {
+      h += `<div class="panel skip"><h3>⏸️ Hoy no pude entrenar</h3>
+        <p class="hint">Motivo: <b>${motivo(r.skip)}</b>. Está bien descansar cuando lo necesitas, y avisar es de personas responsables. 💚 Si puedes, haz 5 minutos de estiramiento.</p>
+        <div class="btns"><button data-a="unskip">↩️ Sí voy a entrenar</button></div></div>`;
+    } else if (skipOpen) {
+      h += `<div class="panel skip"><h3>⏸️ ¿Por qué no puedes hoy?</h3><div class="reasons">
+        ${MOTIVOS.map(([v, t]) => `<button data-skip="${v}">${t}</button>`).join('')}</div>
+        <div class="btns" style="margin-top:8px"><button data-a="skipcancel">Cancelar</button></div></div>`;
+    } else if (done < total) {
+      h += `<button class="skipbtn" data-a="skipopen">⏸️ Hoy no puedo entrenar</button>`;
+    }
     D.items.forEach((_, j) => {
       const e = item(sel, j), ok = !!r.c[e.key];
       h += `<div class="ex ${ok ? 'done' : ''}">${pic(e)}
@@ -145,7 +165,12 @@
     });
     h += `<div class="panel"><h3>💧 Agua de este día (meta: ${AGUA.min} a ${AGUA.max} vasos)</h3><div class="water">`;
     for (let i = 1; i <= AGUA.max; i++) h += `<button data-water="${i}" class="${i <= r.w ? 'on' : ''}">🥛</button>`;
+    const f = r.f || {}, nm = mealsCount(r);
     h += `</div></div>
+      <div class="panel"><h3>🍽️ Mis comidas de hoy (${nm} de ${COMIDAS.length})</h3>
+        <p class="hint">Marca cada comida que hiciste. Comer las ${COMIDAS.length} te da energía para crecer y entrenar.</p>
+        <div class="meals">${COMIDAS.map((m, i) => `<button data-meal="${i}" class="${f[i] ? 'on' : ''}"><span class="mc">${f[i] ? '✓' : ''}</span>${m}</button>`).join('')}</div>
+      </div>
       <div class="panel"><h3>🩹 ¿Te dolió algo este día?</h3><div class="pick bad">
         ${[['no', '😊 No'], ['poco', '😐 Poquito'], ['si', '😣 Sí']].map(([v, t]) => `<button data-pain="${v}" data-v="${v}" class="${r.k === v ? 'on' : ''}">${t}</button>`).join('')}
       </div></div>`;
@@ -159,9 +184,10 @@
     let t = `💪 Semana de ${C.nombre} (${fecha(wk)} – ${fecha(end)})\n`;
     for (let i = 0; i < 7; i++) {
       const r = peek(wk, i), pain = r && r.k ? (r.k === 'no' ? '' : r.k === 'poco' ? ' · dolor: poquito' : ' · dolor: sí') : '';
-      t += `${status(wk, i)} ${DNL[i]}: ${doneCount(r, i)}/${C.dias[i].items.length} · 💧${r ? r.w : 0} vasos${pain}\n`;
+      const ent = r && r.skip && doneCount(r, i) < C.dias[i].items.length ? `no pudo (${motivo(r.skip).replace(/^\S+\s/, '').toLowerCase()})` : `${doneCount(r, i)}/${C.dias[i].items.length}`;
+      t += `${status(wk, i)} ${DNL[i]}: ${ent} · 🍽️${mealsCount(r)}/${COMIDAS.length} · 💧${r ? r.w : 0} vasos${pain}\n`;
     }
-    t += `\nDías completos: ${s.full} (meta ${META}) · Racha: ${streak()} semanas`;
+    t += `\nDías completos: ${s.full} (meta ${META}) · Comidas completas: ${s.meals}/7 días · Racha: ${streak()} semanas`;
     const lab = { 1: '😴', 2: '😐', 3: '🙂', 4: '😄' };
     if (ci.e || ci.s || ci.a) t += `\nEnergía ${lab[ci.e] || '–'} · Sueño ${lab[ci.s] || '–'} · Ánimo ${lab[ci.a] || '–'}`;
     if (ci.nota) t += `\nNota: ${ci.nota}`;
@@ -173,7 +199,8 @@
     const pick = (f, label) => `<p class="hint" style="margin:8px 0 4px">${label}</p><div class="pick">${[1, 2, 3, 4].map(v => `<button data-ci="${f}" data-v="${v}" class="${ci[f] === v ? 'on' : ''}">${['😴', '😐', '🙂', '😄'][v - 1]}</button>`).join('')}</div>`;
     let h = weekNav() + `
       <div class="panel"><h3>📊 Mi semana</h3><div class="stats">
-        <div><b>${s.full}/${META}</b>días completos</div><div><b>${s.hyd}/7</b>días con agua</div><div><b>${streak()}</b>semanas seguidas</div>
+        <div><b>${s.full}/${META}</b>días completos</div><div><b>${s.meals}/7</b>días con ${COMIDAS.length} comidas</div>
+        <div><b>${s.hyd}/7</b>días con agua</div><div><b>${streak()}</b>semanas seguidas</div>
       </div></div>
       <div class="panel"><h3>📝 ¿Cómo me fue esta semana?</h3>
         ${pick('e', '⚡ Mi energía')}${pick('s', '😴 Cómo dormí')}${pick('a', '😊 Mi ánimo')}
@@ -237,7 +264,12 @@
     const d = b.dataset;
     if (d.a === 'prev') { wk = addDays(wk, -7); }
     else if (d.a === 'next') { if (iso(wk) < iso(todayMon)) wk = addDays(wk, 7); }
-    else if (d.day !== undefined) { sel = +d.day; }
+    else if (d.day !== undefined) { sel = +d.day; skipOpen = false; }
+    else if (d.meal !== undefined) { const R = rec(wk, sel); R.f = R.f || {}; if (R.f[d.meal]) delete R.f[d.meal]; else R.f[d.meal] = true; save(); }
+    else if (d.a === 'skipopen') { skipOpen = true; }
+    else if (d.a === 'skipcancel') { skipOpen = false; }
+    else if (d.skip) { const R = rec(wk, sel); R.skip = d.skip; skipOpen = false; save(); }
+    else if (d.a === 'unskip') { const R = rec(wk, sel); delete R.skip; save(); }
     else if (d.mode) { mode = d.mode; mem.mode = mode; save(); }
     else if (d.tab) { tab = d.tab; window.scrollTo(0, 0); }
     else if (d.k) { const R = rec(wk, sel); R.c[d.k] = !R.c[d.k]; if (!R.c[d.k]) delete R.c[d.k]; save(); }
