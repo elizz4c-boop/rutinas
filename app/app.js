@@ -210,9 +210,9 @@
       <header>${C.marca && C.marca.nombre ? `<div class="brand">${C.marca.nombre}</div>` : ''}<h1>💪 Mi rutina, ${C.nombre}</h1><p>${C.subtitulo || 'Marca cada ejercicio cuando lo termines.'}</p></header>
       ${views[tab]()}
       <footer>Tus datos se guardan solo en este teléfono.<br>Material educativo; no sustituye la consulta médica.<br>Imágenes: free-exercise-db (dominio público).</footer></div>
-      <button class="timerbtn" data-a="timer" aria-label="Cronómetro de descanso">⏱️</button>
       <nav class="tabs"><div>
         ${[['hoy', '📅', 'Hoy'], ['semana', '🏅', 'Mi semana'], ['fuerza', '📈', 'Mi fuerza']].map(([t, e, l]) => `<button data-tab="${t}" class="${tab === t ? 'on' : ''}"><span>${e}</span>${l}</button>`).join('')}
+        <button data-a="timer"><span>⏱️</span>Descanso</button>
       </div></nav>
       <div class="timer" id="timer"><div class="sheet"><h3 style="margin:0">⏱️ Descanso</h3><div class="big" id="tt">0:00</div>
         <div class="btns"><button data-t="60">60 seg</button><button data-t="90">90 seg</button><button data-a="tclose">Cerrar</button></div></div></div>`;
